@@ -37,7 +37,7 @@ getopts()
 		case "$1" in
 			-c|--config)	configdir="$2"; shift;;
 			-m|--min)	min_size="$2"; shift;;
-			-p|--partition)	add_part "$2"; shift;;
+			-p|--partition)	add_part "$2"; let index+=1 ; shift;;
 			-t|--title)	EFIname="$2"; shift;;
 			--nvdefault)	nvdefault=true;;
 			--msoft)	msoft=true;;
@@ -233,7 +233,11 @@ add_part()
 {
 	oIFS=$IFS
 	IFS='\n'
-	let part[$index]=$index+1
+	let part[$index]=$index+1 
+	if [ "${part[$index]}" == "128" ]; then
+		echo "Really, you need that many partitions?"
+		exit 5150
+	fi
 	# linux home swap data ESP
 	type[$index]=`echo "$1" |cut -d':' -f1`
 	if echo $1 | grep -qe ":"; then
@@ -259,11 +263,6 @@ add_part()
 		;;
 	esac
 	IFS=$oIFS
-	let index+=1
-	if [ "$index" -gt "127" ]; then
-		echo "Really, you need that many partitions?"
-		exit 5151
-	fi
 }
 
 convert_to_sectors()
