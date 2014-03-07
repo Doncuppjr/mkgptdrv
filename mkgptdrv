@@ -295,7 +295,7 @@ enough_room()
 	disk_size=`blockdev --getsz $device`
 	let last_psec=$disk_size-32
 	let last_psec=$last_psec/2048*2048
-	echo $psec
+	let last_psec=$last_psec-1
 	if [ -n "$min_size" ]; then
 		min_size=`convert_to_sectors $min_size`
 		if [ "$last_psec" -lt "$min_size" ]; then
