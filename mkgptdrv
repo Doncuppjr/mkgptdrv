@@ -18,6 +18,8 @@
 # along with mkgptdrv. If not, see http://www.gnu.org/licenses/.
 #####################################################################
 
+test $(id -u) -ne 0 && echo "please run as root" && exit 1
+
 libutil="chain complex cptime display fancyhello hdt ifcpu \
 	 keytest libmenu menu prdhcp pxechn rosh simple test \
 	 test2 vesamenu"
