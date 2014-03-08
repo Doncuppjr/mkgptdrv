@@ -396,9 +396,27 @@ format()
 {
 	for index in `seq 0 $number_of_parts`; do
 		case ${type[$index]} in
-			0700|ef00) mkfs.vfat ${device}${part[$index]};;
-			8300|8302) mkfs.ext4 ${device}${part[$index]};;
-			8200) mkswap ${device}${part[$index]};;
+			0700|ef00)
+				if [ -n "${label[$index]}" ]; then
+					mkfs.vfat ${device}${part[$index]} -n "${label[$index]}"
+				else
+					mkfs.vfat ${device}${part[$index]}
+				fi
+			;;
+			8300|8302)
+				if [ -n "${label[$index]}" ]; then
+					mkfs.ext4 ${device}${part[$index]} -L "${label[$index]}"
+				else
+					mkfs.ext4 ${device}${part[$index]}
+				fi
+			;;
+			8200)
+				if [ -n "${label[$index]}" ]; then
+					mkswap ${device}${part[$index]} -L "${label[$index]}"
+				else
+					mkswap ${device}${part[$index]}
+				fi
+			;;
 			8e00) pvcreate ${device}${part[$index]};;
 		esac
 	done
