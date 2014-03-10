@@ -34,20 +34,20 @@ liblua="lua"
 
 getopts()
 {
-	index=0
+	part=0
 	while [ -n "$1" ]; do
 		case "$1" in
-			-c|--config)	configdir="$2"; shift;;
-			-m|--min)	min_size="$2"; shift;;
-			-p|--partition)	add_part "$2"; let index+=1 ; shift;;
-			-t|--title)	EFIname="$2"; shift;;
+			-c|--config)	configdir="$2";	shift;;
+			-m|--min)	min_size="$2";	shift;;
+			-p|--partition)	add_part "$2";	shift; let part+=1;;
+			-t|--title)	EFIname="$2";	shift;;
 			--nvdefault)	nvdefault=true;;
 			--msoft)	msoft=true;;
 			*) device="$1";;
 		esac
 		shift
 	done
-	let number_of_parts=$index-1
+	let number_of_parts=$part-1
 }
 
 get_dirs()
@@ -81,14 +81,14 @@ get_dirs()
 
 is_enabled()
 {
-        if [ -n "$1" ]; then
+	if [ -n "$1" ]; then
 		for value in true on yes y 0; do
 			if [ "$value" == "$1" ]; then
 				return 0
 			fi
 		done
 	fi
-        return 1
+	return 1
 }
 
 scan_config()
@@ -141,7 +141,7 @@ copy_files()
 	NVDIR=$ESP/EFI/BOOT
 	mkdir -p "$BIOSDIR"
 	mkdir -p "$EFI32"
-	mkdir -p "$EFI64" 									
+	mkdir -p "$EFI64"
 	cp -rfd $configdir/*		"$BIOSDIR/."
 	cp -rfd $configdir/*		"$EFI32/."
 	cp -rfd $configdir/*		"$EFI64/."
@@ -169,12 +169,12 @@ copy_files()
 	cp $efi64dir/syslinux.efi	"$EFI64/."
 	cp $efi64dir/ldlinux.e64	"$EFI64/."
 	if is_enabled $nvdefault; then
-	        cp $efi64dir/syslinux.efi "$NVDIR/bootx64.efi"
-	        cp $efi64dir/ldlinux.e64  "$NVDIR/."
+		cp $efi64dir/syslinux.efi "$NVDIR/bootx64.efi"
+		cp $efi64dir/ldlinux.e64  "$NVDIR/."
 	fi
 	if is_enabled $msoft; then
 		cp $efi64dir/syslinux.efi "$MSDIR/bootmgfw.efi"
-                cp $efi64dir/ldlinux.e64  "$MSDIR/."
+		cp $efi64dir/ldlinux.e64  "$MSDIR/."
 	fi
 }
 
@@ -216,7 +216,7 @@ not_being_used()
 user_agrees()
 {
 	while [ -z "$REPLY" ]; do
-	    echo "All data on the selected device is about to be overwritten!"
+		echo "All data on the selected device is about to be overwritten!"
 		echo "Are you sure you want to do this?"
 		read -n 1 -r
 		if   [[ "$REPLY" =~ ^[Yy]$ ]]; then
@@ -235,32 +235,32 @@ add_part()
 {
 	oIFS=$IFS
 	IFS='\n'
-	let part[$index]=$index+1 
-	if [ "${part[$index]}" == "128" ]; then
+	let ID[$part]=$part+1 
+	if [ "${ID[$part]}" == "128" ]; then
 		echo "Really, you need that many partitions?"
 		exit 5150
 	fi
 	# linux home swap data ESP
-	type[$index]=`echo "$1" |cut -d':' -f1`
+	type[$part]=`echo "$1" |cut -d':' -f1`
 	if echo $1 | grep -qe ":"; then
-		size[$index]=`echo "$1" |cut -d':' -f2`
-		label[$index]=`echo "$1" |cut -d':' -f3`
+		size[$part]=`echo "$1" |cut -d':' -f2`
+		label[$part]=`echo "$1" |cut -d':' -f3`
 	fi
-	if [ -z "${size[$index]}" ]; then
-		size[$index]=0
+	if [ -z "${size[$part]}" ]; then
+		size[$part]=0
 	fi
-	case ${type[$index]} in
-		l|linux) type[$index]=8300;;
-		s|swap)	type[$index]=8200;;
-		h|home) type[$index]=8302;;
-		d|data) type[$index]=0700;;
-		LVM)	type[$index]=8e00;;
-		ESP)	type[$index]=ef00
+	case ${type[$part]} in
+		l|linux) type[$part]=8300;;
+		s|swap)	type[$part]=8200;;
+		h|home) type[$part]=8302;;
+		d|data) type[$part]=0700;;
+		LVM)	type[$part]=8e00;;
+		ESP)	type[$part]=ef00
 			if [ -n "$ESPpart" ]; then
 				echo "You can only have one ESP partition"
 				exit 12
 			else
-				ESPpart=${part[$index]}
+				ESPpart=${ID[$part]}
 			fi
 		;;
 	esac
@@ -295,7 +295,7 @@ enough_room()
 	disk_size=`blockdev --getsz $device`
 	let last_psec=$disk_size-32
 	let last_psec=$last_psec/2048*2048
-	let last_psec=$last_psec-1
+	let last_psec-=1
 	if [ -n "$min_size" ]; then
 		min_size=`convert_to_sectors $min_size`
 		if [ "$last_psec" -lt "$min_size" ]; then
@@ -304,20 +304,19 @@ enough_room()
 		fi
 	fi
 	total=2048
-	for index in `seq 0 $number_of_parts`; do
+	for part in `seq 0 $number_of_parts`; do
 		if [ "$total" == "$last_psec" ]; then
 			echo "Only one partition can be expanded to fill the disk,"
 			echo "and it must be the last one."
 			exit 8
 		fi
-		size=${size[$index]}
-		start[$index]=$total
-		if [ -n "$size" ] && [ "$size" != "0" ]; then
-			size=`convert_to_sectors $size`
-			let end[$index]=${start[$index]}+$size-1
-			let total=$total+$size
+		start[$part]=$total
+		if [ -n "${size[$part]}" ] && [ "${size[$part]}" != "0" ]; then
+			size=`convert_to_sectors ${size[$part]}`
+			let end[$part]=${start[$part]}+${size[$part]}-1
+			let total+=${size[$part]}
 		else
-			end[$index]=$last_psec
+			end[$part]=$last_psec
 			total=$last_psec
 		fi
 	done
@@ -377,16 +376,16 @@ partition()
 	dd if=/dev/zero of=$device bs=512 count=32 seek=$(($disk_size - 32))
 	blockdev --rereadpt $device
 	sgdisk -o $device
-	for index in `seq 0 $number_of_parts`; do
-		if [ -n "${label[$index]}" ]; then
-			sgdisk	-n ${part[$index]}:${start[$index]}:${end[$index]} \
-				-t ${part[$index]}:${type[$index]} \
-				-c ${part[$index]}:"${label[$index]}" \
-				$device
+	for part in `seq 0 $number_of_parts`; do
+		if [ -n "${label[$part]}" ]; then
+			sgdisk	-n ${ID[$part]}:${start[$part]}:${end[$part]} \
+					-t ${ID[$part]}:${type[$part]} \
+					-c ${ID[$part]}:"${label[$part]}" \
+					$device
 		else
-			sgdisk	-n ${part[$index]}:${start[$index]}:${end[$index]} \
-				-t ${part[$index]}:${type[$index]} \
-				$device
+			sgdisk	-n ${ID[$part]}:${start[$part]}:${end[$part]} \
+					-t ${ID[$part]}:${type[$part]} \
+					$device
 		fi
 	done
 	sgdisk $device --attributes=1:set:2
@@ -394,30 +393,31 @@ partition()
 
 format()
 {
-	for index in `seq 0 $number_of_parts`; do
-		case ${type[$index]} in
+	for part in `seq 0 $number_of_parts`; do
+		case ${type[$part]} in
 			0700|ef00)
-				if [ -n "${label[$index]}" ]; then
-					mkfs.vfat ${device}${part[$index]} -n "${label[$index]}"
+				if [ -n "${label[$part]}" ]; then
+					mkfs.vfat ${device}${ID[$part]} -n "${label[$part]}"
 				else
-					mkfs.vfat ${device}${part[$index]}
+					mkfs.vfat ${device}${ID[$part]}
 				fi
 			;;
 			8300|8302)
-				if [ -n "${label[$index]}" ]; then
-					mkfs.ext4 ${device}${part[$index]} -L "${label[$index]}"
+				if [ -n "${label[$part]}" ]; then
+					mkfs.ext4 ${device}${ID[$part]} -L "${label[$part]}"
 				else
-					mkfs.ext4 ${device}${part[$index]}
+					mkfs.ext4 ${device}${ID[$part]}
 				fi
 			;;
 			8200)
-				if [ -n "${label[$index]}" ]; then
-					mkswap ${device}${part[$index]} -L "${label[$index]}"
+				if [ -n "${label[$part]}" ]; then
+					mkswap ${device}${ID[$part]} -L "${label[$part]}"
 				else
-					mkswap ${device}${part[$index]}
+					mkswap ${device}${ID[$part]}
 				fi
 			;;
-			8e00) pvcreate ${device}${part[$index]};;
+			8e00) pvcreate ${device}${ID[$part]}
+			;;
 		esac
 	done
 }
