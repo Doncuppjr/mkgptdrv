@@ -32,6 +32,44 @@ libmenu="complex display hdt simple test test2"
 libgpl="cpuidtest disk dmitest hdt ifcpu lua vpdtest zzjson"
 liblua="lua"
 
+usage()
+{
+	echo "
+	This is a simple script to turn a block device into a gpt formated disk.
+It does require that a unique name for your Project/Brand be passed with 
+the -t <project> argument. This name will be used to set up the EFI loaders.
+	Additionally, you will need to tell it where it can find a syslinux theme.
+This is passed as -c <directory with syslinux.cfg>. This file will be scanned for
+the neceassary com32 files, and those files will be copied into the appropriate 
+locations for each loader, along with the config folder.
+	Multiple partitions are supported, and can be added with -p <type:size:label>
+The order they are entered will be used when creating the ID. At least the type is
+required if only one partition is going to be made. The size will be guessed and the
+label would be blank. Supported types are linux(ext4) home(ext4) swap(linux swap)
+LVM(Linux Logical Volume) ESP(fat32) data(fat32). You can have only one ESP partition.
+byte sizes can be expressed as *blank* bytes, K, M, G and s for sectors.
+
+Options:
+	-c --config <dir>		: Path to syslinuc.cfg folder
+	-m --min <bytes>		: Minimum disk size allowed
+	-p --partition <type:size:label>: Partition shorthand
+	-t --title <Project/Brand>	: Will be used to label the EFI Loader Directory
+	-o --overlay <dir>		: Additional directory to merge in at the root level
+	-s --sync			: Mount volumes with sync enabled
+	-d --device <block device>	: The last argument is interpreted as the device anyways
+	-h --help			: Show this usage
+
+Example:
+	mkgptpart -c ~/sys-themes/default -t 'My Boot Loader' -o /build -p ESP /dev/sdb
+
+"
+
+	if [ -n "$2" ]; then
+		echo "$2"
+	fi
+	exit $1
+}
+
 getopts()
 {
 	part=0
@@ -46,6 +84,7 @@ getopts()
 			-s|--sync)	mount_opts="-o sync";;
 			--nvdefault)	nvdefault=true;;
 			--msoft)	msoft=true;;
+			-h|--help)	usage 255;;
 			*) device="$1";;
 		esac
 		shift
@@ -69,20 +108,16 @@ get_dirs()
 		fi
 	done
 	if [ -z "$configdir" ] || [ ! -e $configdir/syslinux.cfg ]; then
-		echo "You must specify and syslinux theme dir with a syslinux.cfg inside."
-		exit 14
+		usage 14 "You must specify and syslinux theme dir with a syslinux.cfg inside."
 	fi
 	if [ -z "$biosdir" ] || [ -z "$efi64dir" ] || [ -z "$efi32dir" ]; then
-		echo "We could not get a good read on your syslinux install."
-		exit 11
+		usage 11 "We could not get a good read on your syslinux install."
 	fi
 	if [ -n "$overlay" ] && [ ! -e "$overlay" ]; then
-		echo "The requested root overlay directory $overlay, does not exist!"
-		exit 15
+		usage 15 "The requested root overlay directory $overlay, does not exist!"
 	fi
 	if [ ! -e `which extlinux` ]; then
-		echo "Could not find extlinux executable."
-		exit 12
+		usage 12 "Could not find extlinux executable."
 	fi
 }
 
@@ -113,8 +148,7 @@ scan_config()
 			grep $1 -oe $com.c32 >> /tmp/syslinux-com32
 		done
 	else
-		echo "Could not find config $config."
-		exit 13
+		usage 13 "Could not find config $config."
 	fi
 }
 
@@ -193,12 +227,10 @@ copy_files()
 efi_ready()
 {
 	if [ -z "$EFIname" ]; then
-		echo "You must specify the name of \"Your\" EFI bootloader"
-		exit 9
+		usage 9 "You must specify the name of \"Your\" EFI bootloader"
 	fi
 	if [ -z "$ESPpart" ]; then
-		echo "You must have at least one ESP partition"
-		exit 10
+		usage 10 "You must have at least one ESP partition"
 	fi
 	return 0
 }
@@ -209,8 +241,7 @@ block_device()
 	   [ -e /sys/block/`basename "$1"`/dev ]; then
 		return 0
 	else
-		echo "No block device specified, or not a block device."
-		exit 1
+		usage 1 "No block device specified, or not a block device."
 	fi
 }
 
@@ -218,8 +249,7 @@ not_being_used()
 {
 	for mount in `list_mounts "$1"`; do
 		if [ -n "`fuser -m $mount`" ]; then
-			echo "Device $1 is still in use"
-			exit 2
+			usage 2 "Device $1 is still in use"
 		fi
 	done
 	return 0
@@ -269,8 +299,7 @@ add_part()
 		LVM)	type[$part]=8e00;;
 		ESP)	type[$part]=ef00
 			if [ -n "$ESPpart" ]; then
-				echo "You can only have one ESP partition"
-				exit 12
+				usage 12 "You can only have one ESP partition"
 			else
 				ESPpart=${ID[$part]}
 			fi
@@ -297,7 +326,7 @@ convert_to_sectors()
 		K)	let "size=${value}*2";;
 		M)	let "size=${value}*2*1024";;
 		G)	let "size=${value}*2*1024*1024";;
-		*)	echo "Invalid Unit $unit"; exit 5;;
+		*)	echo "Invalid Unit $unit"; usage 5;;
 	esac
 	echo $size
 }
@@ -311,16 +340,13 @@ enough_room()
 	if [ -n "$min_size" ]; then
 		min_size=`convert_to_sectors $min_size`
 		if [ "$last_psec" -lt "$min_size" ]; then
-			echo "Disk is less than the requested size!"
-			exit 7
+			usage 7 "Disk is less than the requested size!"
 		fi
 	fi
 	total=2048
 	for part in `seq 0 $number_of_parts`; do
 		if [ "$total" == "$last_psec" ]; then
-			echo "Only one partition can be expanded to fill the disk,"
-			echo "and it must be the last one."
-			exit 8
+			usage 8 "Only one partition can be expanded to fill the disk, and it must be the last one."
 		fi
 		start[$part]=$total
 		if [ -n "${size[$part]}" ] && [ "${size[$part]}" != "0" ]; then
@@ -335,8 +361,7 @@ enough_room()
 	if [ "$total" -le "$last_psec" ]; then
 		return 0
 	else
-		echo "There is not enough room on the disk for all the requested partitions!"
-		exit 6
+		usage 6 "There is not enough room on the disk for all the requested partitions!"
 	fi
 }
 
@@ -507,18 +532,18 @@ copy_file()
 
 	orig_size=`stat -c %s "$1"`
 	dest_size=0
-	output=false
-	while [ $orig_size -gt $dest_size ]; do
-		if [ -e "$2" ]; then
-			dest_size=`stat -c %s "$2"`
-		fi
-		let pct=100*$dest_size/$orig_size
-		printf "Copying %-15s to %-50s %-3s Complete\r" "`basename $1`" "`dirname $2`" "${pct}%"
-		sleep .1
-		output=true
-	done
-	if is_enabled $output; then
+	if [ "$orig_size" -gt "512000" ]; then
+		while [ $orig_size -gt $dest_size ]; do
+			if [ -e "$2" ]; then
+				dest_size=`stat -c %s "$2"`
+			fi
+			let pct=100*$dest_size/$orig_size
+			printf "Copying %-15s to %-50s %-3s Complete\r" "`basename $1`" "`dirname $2`" "${pct}%"
+			sleep .1
+		done
 		echo ""
+	else
+		wait
 	fi
 }
 
