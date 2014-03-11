@@ -18,6 +18,7 @@
 # along with mkgptdrv. If not, see http://www.gnu.org/licenses/.
 #####################################################################
 #set -x
+
 test $(id -u) -ne 0 && echo "please run as root" && exit 1
 
 libutil="chain complex cptime display fancyhello hdt ifcpu \
@@ -35,35 +36,46 @@ liblua="lua"
 usage()
 {
 	echo "
-	This is a simple script to turn a block device into a gpt formated disk.
+Usage:
+
+This is a simple script to turn a block device into a gpt formated disk.
 It does require that a unique name for your Project/Brand be passed with 
 the -t <project> argument. This name will be used to set up the EFI loaders.
-	Additionally, you will need to tell it where it can find a syslinux theme.
+
+Additionally, you will need to tell it where it can find a syslinux theme.
 This is passed as -c <directory with syslinux.cfg>. This file will be scanned for
 the neceassary com32 files, and those files will be copied into the appropriate 
 locations for each loader, along with the config folder.
-	Multiple partitions are supported, and can be added with -p <type:size:label>
+
+Multiple partitions are supported, and can be added with -p <type:size:label>
 The order they are entered will be used when creating the ID. At least the type is
-required if only one partition is going to be made. The size will be guessed and the
-label would be blank. Supported types are linux(ext4) home(ext4) swap(linux swap)
-LVM(Linux Logical Volume) ESP(fat32) data(fat32). You can have only one ESP partition.
-byte sizes can be expressed as *blank* bytes, K, M, G and s for sectors.
+required if only one partition is going to be made, and it must be ESP.
+The size will be guessed to fill the disk and the label will be blank.
+
+Sizes can be expressed as <size>B, K, M, G and S for sectors.
 
 Options:
-	-c --config <dir>		: Path to syslinuc.cfg folder
-	-m --min <bytes>		: Minimum disk size allowed
-	-p --partition <type:size:label>: Partition shorthand
-	-t --title <Project/Brand>	: Will be used to label the EFI Loader Directory
-	-o --overlay <dir>		: Additional directory to merge in at the root level
-	-s --sync			: Mount volumes with sync enabled
-	-d --device <block device>	: The last argument is interpreted as the device anyways
-	-h --help			: Show this usage
+     --config,-c <dir>		   : Path to syslinux.cfg folder.
+        --min,-m <size>		   : Minimum disk size allowed.
+  --partition,-p <type:size:label> : Partition shorthand.
+      --title,-t <Project/Brand>   : Will be used to label the EFI Loader Directory.
+    --overlay,-o <dir>		   : Additional directory to merge in at the root level.
+       --sync,-s		   : Mount volumes with sync enabled.
+     --device,-d <block device>	   : The last argument is interpreted as the device anyways.
+       --help,-h		   : Show this usage.
+
+Partition Types:
+         linux,l : Standard Ext4 Linux Volume
+          home,h : Ext4 Linux Volume Labeled home
+          swap,s : Linux Swap Partition
+          data,d : General Data Partition Formated Fat32
+             LVM : Logical Volume Manager Partition
+             ESP : EFI System Partition
 
 Example:
-	mkgptpart -c ~/sys-themes/default -t 'My Boot Loader' -o /build -p ESP /dev/sdb
+	mkgptpart -c /sys-themes/default -t 'MyProject' -o /build -p ESP /dev/loop0
 
 "
-
 	if [ -n "$2" ]; then
 		echo "$2"
 	fi
@@ -227,10 +239,10 @@ copy_files()
 efi_ready()
 {
 	if [ -z "$EFIname" ]; then
-		usage 9 "You must specify the name of \"Your\" EFI bootloader"
+		usage 9 "You must specify the name of 'Your' EFI bootloader."
 	fi
 	if [ -z "$ESPpart" ]; then
-		usage 10 "You must have at least one ESP partition"
+		usage 10 "You must have at least one ESP partition."
 	fi
 	return 0
 }
@@ -249,7 +261,7 @@ not_being_used()
 {
 	for mount in `list_mounts "$1"`; do
 		if [ -n "`fuser -m $mount`" ]; then
-			usage 2 "Device $1 is still in use"
+			usage 2 "Device $1 is still in use."
 		fi
 	done
 	return 0
@@ -267,7 +279,7 @@ user_agrees()
 		elif [[ "$REPLY" =~ ^[Nn]$ ]]; then
 			exit 3
 		else
-			echo -e "\nInvalid response $REPLY\n"
+			echo -e "\nInvalid response. $REPLY\n"
 			unset REPLY
 		fi
 	done
@@ -299,7 +311,7 @@ add_part()
 		LVM)	type[$part]=8e00;;
 		ESP)	type[$part]=ef00
 			if [ -n "$ESPpart" ]; then
-				usage 12 "You can only have one ESP partition"
+				usage 12 "You can only have one ESP partition."
 			else
 				ESPpart=${ID[$part]}
 			fi
