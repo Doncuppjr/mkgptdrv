@@ -41,6 +41,8 @@ getopts()
 			-m|--min)	min_size="$2";	shift;;
 			-p|--partition)	add_part "$2";	shift; let part+=1;;
 			-t|--title)	EFIname="$2";	shift;;
+			-o|--overlay)	overlay="$2";	shift;;
+			-d|--device)	device="$2";	shift;;
 			-s|--sync)	mount_opts="-o sync";;
 			--nvdefault)	nvdefault=true;;
 			--msoft)	msoft=true;;
@@ -73,6 +75,10 @@ get_dirs()
 	if [ -z "$biosdir" ] || [ -z "$efi64dir" ] || [ -z "$efi32dir" ]; then
 		echo "We could not get a good read on your syslinux install."
 		exit 11
+	fi
+	if [ -n "$overlay" ] && [ ! -e "$overlay" ]; then
+		echo "The requested root overlay directory $overlay, does not exist!"
+		exit 15
 	fi
 	if [ ! -e `which extlinux` ]; then
 		echo "Could not find extlinux executable."
@@ -140,6 +146,9 @@ copy_files()
 	EFI64=$ESP/EFI/"$EFIname"/efi64
 	MSDIR=$ESP/EFI/Microsoft/Boot
 	NVDIR=$ESP/EFI/BOOT
+	mkdir -p "$BIOSDIR"
+	mkdir -p "$EFI32"
+	mkdir -p "$EFI64"
 	echo -e "\nCopying Syslinux Theme"
 	copy_dir "$configdir"		"$BIOSDIR"
 	copy_dir "$configdir"		"$EFI32"
@@ -174,6 +183,9 @@ copy_files()
 	if is_enabled $msoft; then
 		copy_file "$efi64dir/syslinux.efi" "$MSDIR/bootmgfw.efi"
 		copy_file "$efi64dir/ldlinux.e64"  "$MSDIR/ldlinux.e64"
+	fi
+	if [ -n "$overlay" ]; then
+		copy_dir "$overlay"	"$ESP"
 	fi
 }
 
@@ -333,6 +345,19 @@ install_mbr()
 	dd if=$biosdir/gptmbr.bin of=$device bs=440 count=1 conv=notrunc
 }
 
+part_id()
+{
+	short_dev=`basename $device`
+	if grep -qoe "$short_dev[p][0-9]*" /proc/partitions; then
+		p=p
+	fi
+}
+
+mount_dev()
+{
+	mount ${mount_opts} ${device}${p}${ESPpart} /tmp/syslinux-mount
+}
+
 main()
 {
 	efi_ready
@@ -350,14 +375,17 @@ main()
 	   enough_room $device && \
 	   user_agrees; then
 		partition
+		part_id
 		format
 		install_mbr
 		mkdir -p /tmp/syslinux-mount
-		mount ${mount_opts} ${device}$ESPpart /tmp/syslinux-mount
+		mount_dev
+		sync
 		copy_files
 		_sync
 		echo -e "\nInstalling Bios Bootloader"
 		extlinux -i $BIOSDIR
+		sync
 		umount /tmp/syslinux-mount
 		rmdir /tmp/syslinux-mount
 		rm  /tmp/syslinux-com32
@@ -394,12 +422,13 @@ _sync()
 
 list_mounts()
 {
-	cat /proc/mounts |grep -oe "$1[0-9]*"
+	grep -oe "$1[0-9]*" /proc/mounts
 }
 
 partition()
 {
-	for mount in `list_mounts $device`; do
+	part_id
+	for mount in `list_mounts ${device}${p}`; do
 		umount -f $mount
 	done
 	dd if=/dev/zero of=$device bs=1M count=2
@@ -432,26 +461,26 @@ format()
 		case ${type[$part]} in
 			0700|ef00)
 				if [ -n "${label[$part]}" ]; then
-					mkfs.vfat ${device}${ID[$part]} -n "${label[$part]}"
+					mkfs.vfat ${device}${p}${ID[$part]} -n "${label[$part]}"
 				else
-					mkfs.vfat ${device}${ID[$part]}
+					mkfs.vfat ${device}${p}${ID[$part]}
 				fi
 			;;
 			8300|8302)
 				if [ -n "${label[$part]}" ]; then
-					mkfs.ext4 ${device}${ID[$part]} -L "${label[$part]}"
+					mkfs.ext4 ${device}${p}${ID[$part]} -L "${label[$part]}"
 				else
-					mkfs.ext4 ${device}${ID[$part]}
+					mkfs.ext4 ${device}${p}${ID[$part]}
 				fi
 			;;
 			8200)
 				if [ -n "${label[$part]}" ]; then
-					mkswap ${device}${ID[$part]} -L "${label[$part]}"
+					mkswap ${device}${p}${ID[$part]} -L "${label[$part]}"
 				else
-					mkswap ${device}${ID[$part]}
+					mkswap ${device}${p}${ID[$part]}
 				fi
 			;;
-			8e00) pvcreate ${device}${ID[$part]}
+			8e00) pvcreate ${device}${p}${ID[$part]}
 			;;
 		esac
 	done
