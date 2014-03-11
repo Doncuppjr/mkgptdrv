@@ -453,21 +453,27 @@ buffer_size()
 _sync()
 {
 	echo -e "\nSyncronizing the disk"
+	format='\rProgress %3s at %6s Per Second'
 	freq=2
+	counter=0
 	let max=`buffer_size`
 	last=$max
 	sync &
-	while pidof sync 2>&1>/dev/null; do
+	spid=$!
+	while ps -p $spid 2>&1>/dev/null; do
 		now=`buffer_size`
 		let persec=$last-$now
 		let persec=$persec/$freq
 		let progress=$max-$now
 		let pct=100*$progress/$max
-		printf "Progress %3s at %6s Per Second\r"  "${pct}%"  "${persec}K"
+		printf "$format" "${pct}%" "${persec}K"
 		last=$now
 		sleep $freq
+		let counter+=1
 	done
-	echo ""
+	let time=$counter*$freq
+	let persec=$max/$time
+	printf "$format\n" "100%" "${persec}K"
 }
 
 list_mounts()
@@ -554,22 +560,34 @@ copy_dir()
 copy_file()
 {
 	cp -f "$1" "$2" &
+	cppid=$!
 
 	orig_size=`stat -c %s "$1"`
 	dest_size=0
-	if [ "$orig_size" -gt "512000" ]; then
-		while [ $orig_size -gt $dest_size ]; do
-			if [ -e "$2" ]; then
-				dest_size=`stat -c %s "$2"`
-			fi
-			let pct=100*$dest_size/$orig_size
-			printf "Copying %-15s to %-50s %-3s Complete\r" "`basename $1`" "`dirname $2`" "${pct}%"
-			sleep .1
-		done
-		echo ""
+	timeout=0
+	format='Copying %-15s to %-50s %-3s Complete\r'
+	if [ -n "$mount_opts" ]; then
+		freq='1'
 	else
-		wait
+		freq='.1'
 	fi
+	while ps -p $cppid 2>&1>/dev/null && [ $timeout -lt 30 ]; do
+		if [ -e "$2" ]; then
+			dest_size=`stat -c %s "$2"`
+		else
+			let timeout+=1
+		fi
+		let pct=100*$dest_size/$orig_size
+		printf "$format" "`basename $1`" "`dirname $2`" "${pct}%"
+		sleep $freq
+	done
+	if [ `stat -c %s "$2"` -eq $orig_size ]; then
+		printf "$format" "`basename $1`" "`dirname $2`" "100%"
+	else
+		echo "Something went wrong with the copy!"
+		kill -KILL $cppid
+	fi
+	echo ""
 }
 
 getopts "$@"
