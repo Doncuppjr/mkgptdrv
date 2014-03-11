@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with mkgptdrv. If not, see http://www.gnu.org/licenses/.
 #####################################################################
-
+#set -x
 test $(id -u) -ne 0 && echo "please run as root" && exit 1
 
 libutil="chain complex cptime display fancyhello hdt ifcpu \
@@ -41,6 +41,7 @@ getopts()
 			-m|--min)	min_size="$2";	shift;;
 			-p|--partition)	add_part "$2";	shift; let part+=1;;
 			-t|--title)	EFIname="$2";	shift;;
+			-s|--sync)	mount_opts="-o sync";;
 			--nvdefault)	nvdefault=true;;
 			--msoft)	msoft=true;;
 			*) device="$1";;
@@ -139,42 +140,40 @@ copy_files()
 	EFI64=$ESP/EFI/"$EFIname"/efi64
 	MSDIR=$ESP/EFI/Microsoft/Boot
 	NVDIR=$ESP/EFI/BOOT
-	mkdir -p "$BIOSDIR"
-	mkdir -p "$EFI32"
-	mkdir -p "$EFI64"
-	cp -rfd $configdir/*		"$BIOSDIR/."
-	cp -rfd $configdir/*		"$EFI32/."
-	cp -rfd $configdir/*		"$EFI64/."
+	echo -e "\nCopying Syslinux Theme"
+	copy_dir "$configdir"		"$BIOSDIR"
+	copy_dir "$configdir"		"$EFI32"
+	copy_dir "$configdir"		"$EFI64"
 	if is_enabled $nvdefault; then
-		mkdir -p		"$NVDIR"
-		cp -rfd $configdir/*	"$NVDIR/."
+		copy_dir "$configdir"	"$NVDIR"
 	fi
 	if is_enabled $msoft; then
-		mkdir -p 		"$MSDIR"
-		cp -rfd $configdir/* 	"$MSDIR/."
+		copy_dir "$configdir" 	"$MSDIR"
 	fi
 	for com in `cat /tmp/syslinux-com32`; do
-		cp $biosdir/$com	"$BIOSDIR/."
-		cp $efi32dir/$com	"$EFI32/."
-		cp $efi64dir/$com	"$EFI64/."
+		echo -e "\nCopying com32 files"
+		copy_file "$biosdir/$com"	"$BIOSDIR/$com"
+		copy_file "$efi32dir/$com"	"$EFI32/$com"
+		copy_file "$efi64dir/$com"	"$EFI64/$com"
 		if is_enabled $nvdefault; then
-			cp $efi64dir/$com "$NVDIR/."
+			copy_file "$efi64dir/$com" "$NVDIR/$com"
 		fi
 		if is_enabled $msoft; then
-			cp $efi64dir/$com "$MSDIR/."
+			copy_file "$efi64dir/$com" "$MSDIR/$com"
 		fi
 	done
-	cp $efi32dir/syslinux.efi	"$EFI32/."
-	cp $efi32dir/ldlinux.e32 	"$EFI32/."
-	cp $efi64dir/syslinux.efi	"$EFI64/."
-	cp $efi64dir/ldlinux.e64	"$EFI64/."
+	echo -e "\nCopying EFI loaders"
+	copy_file "$efi32dir/syslinux.efi"	"$EFI32/syslinux.efi"
+	copy_file "$efi32dir/ldlinux.e32" 	"$EFI32/ldlinux.e32"
+	copy_file "$efi64dir/syslinux.efi"	"$EFI64/syslinux.efi"
+	copy_file "$efi64dir/ldlinux.e64"	"$EFI64/ldlinux.e64"
 	if is_enabled $nvdefault; then
-		cp $efi64dir/syslinux.efi "$NVDIR/bootx64.efi"
-		cp $efi64dir/ldlinux.e64  "$NVDIR/."
+		copy_file "$efi64dir/syslinux.efi" "$NVDIR/bootx64.efi"
+		copy_file "$efi64dir/ldlinux.e64"  "$NVDIR/ldlinux.e64"
 	fi
 	if is_enabled $msoft; then
-		cp $efi64dir/syslinux.efi "$MSDIR/bootmgfw.efi"
-		cp $efi64dir/ldlinux.e64  "$MSDIR/."
+		copy_file "$efi64dir/syslinux.efi" "$MSDIR/bootmgfw.efi"
+		copy_file "$efi64dir/ldlinux.e64"  "$MSDIR/ldlinux.e64"
 	fi
 }
 
@@ -204,7 +203,7 @@ block_device()
 
 not_being_used()
 {
-	for mount in `list_mounts $1`; do
+	for mount in `list_mounts "$1"`; do
 		if [ -n "`fuser -m $mount`" ]; then
 			echo "Device $1 is still in use"
 			exit 2
@@ -312,7 +311,7 @@ enough_room()
 		fi
 		start[$part]=$total
 		if [ -n "${size[$part]}" ] && [ "${size[$part]}" != "0" ]; then
-			size=`convert_to_sectors ${size[$part]}`
+			size[$part]=`convert_to_sectors ${size[$part]}`
 			let end[$part]=${start[$part]}+${size[$part]}-1
 			let total+=${size[$part]}
 		else
@@ -330,6 +329,7 @@ enough_room()
 
 install_mbr()
 {
+	echo -e "Installing Bootsector"
 	dd if=$biosdir/gptmbr.bin of=$device bs=440 count=1 conv=notrunc
 }
 
@@ -353,13 +353,43 @@ main()
 		format
 		install_mbr
 		mkdir -p /tmp/syslinux-mount
-		mount ${device}$ESPpart /tmp/syslinux-mount
+		mount ${mount_opts} ${device}$ESPpart /tmp/syslinux-mount
 		copy_files
+		_sync
+		echo -e "\nInstalling Bios Bootloader"
 		extlinux -i $BIOSDIR
 		umount /tmp/syslinux-mount
 		rmdir /tmp/syslinux-mount
 		rm  /tmp/syslinux-com32
 	fi
+}
+
+buffer_size()
+{
+	local dirty=`grep -e Dirty: /proc/meminfo |grep -oe "[0-9]*"`
+	local writeback=`grep -e Writeback: /proc/meminfo |grep -oe "[0-9]*"`
+	let buffer=$dirty+$writeback
+	echo $buffer
+}
+
+_sync()
+{
+	echo -e "\nSyncronizing the disk"
+	freq=2
+	let max=`buffer_size`
+	last=$max
+	sync &
+	while pidof sync 2>&1>/dev/null; do
+		now=`buffer_size`
+		let persec=$last-$now
+		let persec=$persec/$freq
+		let progress=$max-$now
+		let pct=100*$progress/$max
+		printf "Progress %3s at %6s Per Second\r"  "${pct}%"  "${persec}K"
+		last=$now
+		sleep $freq
+	done
+	echo ""
 }
 
 list_mounts()
@@ -376,23 +406,28 @@ partition()
 	dd if=/dev/zero of=$device bs=512 count=32 seek=$(($disk_size - 32))
 	blockdev --rereadpt $device
 	sgdisk -o $device
+	echo -e "\nCreating Partitions"
+	printf "%3s %4s %12s %-40s\n" ID Type Size Label
+	echo "==================================================="
 	for part in `seq 0 $number_of_parts`; do
+		printf "%3s %4s %12s %-40s\n" "${ID[$part]}" "${type[$part]}" "${size[$part]}" "${label[$part]}"
 		if [ -n "${label[$part]}" ]; then
 			sgdisk	-n ${ID[$part]}:${start[$part]}:${end[$part]} \
 					-t ${ID[$part]}:${type[$part]} \
 					-c ${ID[$part]}:"${label[$part]}" \
-					$device
+					$device 1> /dev/null
 		else
 			sgdisk	-n ${ID[$part]}:${start[$part]}:${end[$part]} \
 					-t ${ID[$part]}:${type[$part]} \
-					$device
+					$device 1> /dev/null
 		fi
 	done
-	sgdisk $device --attributes=1:set:2
+	sgdisk $device --attributes=1:set:2 1> /dev/null
 }
 
 format()
 {
+	echo -e "\nFormating Partitions"
 	for part in `seq 0 $number_of_parts`; do
 		case ${type[$part]} in
 			0700|ef00)
@@ -420,6 +455,37 @@ format()
 			;;
 		esac
 	done
+}
+
+copy_dir()
+{
+	for dir in `find "$1" -type d | sed -e s:^"$1"::g |cut -c2-`; do
+		mkdir -p "$2/$dir"
+	done
+	for file in `find "$1" -type f| sed -e s:^"$1"/::g`; do
+		copy_file "$1/$file" "$2/$file"
+	done
+}
+
+copy_file()
+{
+	cp -f "$1" "$2" &
+
+	orig_size=`stat -c %s "$1"`
+	dest_size=0
+	output=false
+	while [ $orig_size -gt $dest_size ]; do
+		if [ -e "$2" ]; then
+			dest_size=`stat -c %s "$2"`
+		fi
+		let pct=100*$dest_size/$orig_size
+		printf "Copying %-15s to %-50s %-3s Complete\r" "`basename $1`" "`dirname $2`" "${pct}%"
+		sleep .1
+		output=true
+	done
+	if is_enabled $output; then
+		echo ""
+	fi
 }
 
 getopts "$@"
