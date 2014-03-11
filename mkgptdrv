@@ -184,6 +184,7 @@ copy_files()
 		copy_file "$efi64dir/syslinux.efi" "$MSDIR/bootmgfw.efi"
 		copy_file "$efi64dir/ldlinux.e64"  "$MSDIR/ldlinux.e64"
 	fi
+	echo -e "\nCopying in the Overlay Directory"
 	if [ -n "$overlay" ]; then
 		copy_dir "$overlay"	"$ESP"
 	fi
@@ -375,7 +376,6 @@ main()
 	   enough_room $device && \
 	   user_agrees; then
 		partition
-		part_id
 		format
 		install_mbr
 		mkdir -p /tmp/syslinux-mount
@@ -456,6 +456,7 @@ partition()
 
 format()
 {
+	part_id
 	echo -e "\nFormating Partitions"
 	for part in `seq 0 $number_of_parts`; do
 		case ${type[$part]} in
@@ -488,11 +489,15 @@ format()
 
 copy_dir()
 {
-	for dir in `find "$1" -type d | sed -e s:^"$1"::g |cut -c2-`; do
-		mkdir -p "$2/$dir"
+	dir=$1
+	if [ "`echo $dir | rev | cut -c1`" == "/" ]; then
+		dir="`echo $dir| rev | cut -c2- | rev`"
+	fi
+	for adir in `find "$dir" -type d | sed -e s:^"$dir"::g |cut -c2-`; do
+		mkdir -p "$2/$adir"
 	done
-	for file in `find "$1" -type f| sed -e s:^"$1"/::g`; do
-		copy_file "$1/$file" "$2/$file"
+	for file in `find "$dir" -type f| sed -e s:^"$dir"/::g`; do
+		copy_file "$dir/$file" "$2/$file"
 	done
 }
 
