@@ -48,9 +48,10 @@ the neceassary com32 files, and those files will be copied into the appropriate
 locations for each loader, along with the config folder.
 
 Multiple partitions are supported, and can be added with -p <type:size:label>
-The order they are entered will be used when creating the ID. At least the type is
-required if only one partition is going to be made, and it must be ESP.
-The size will be guessed to fill the disk and the label will be blank.
+The order they are entered will be used when creating the ID. At least one
+partition will be made. By default, it will be an ESP partition that will
+fill the disk and it will be labeled 'EFI System Partition'. At least one ESP
+is required.
 
 Sizes can be expressed as <size>B, K, M, G and S for sectors.
 
@@ -66,14 +67,22 @@ Options:
 
 Partition Types:
          linux,l : Standard Ext4 Linux Volume
-          home,h : Ext4 Linux Volume Labeled home
+          home,h : Ext4 Linux Volume with gpt partition type set to home
           swap,s : Linux Swap Partition
           data,d : General Data Partition Formated Fat32
              LVM : Logical Volume Manager Partition
              ESP : EFI System Partition
 
-Example:
-	mkgptpart -c /sys-themes/default -t 'MyProject' -o /build -p ESP /dev/loop0
+Examples:
+	mkgptpart -c /sys-themes/default -t 'MyProject' -o /build  /dev/loop0
+	
+	mkgptpart	-c /sys-themes/menu \\
+			-t 'BobsDistro' \\
+			-o /build \\
+			-p ESP:1g:'EFI System Partition' \\
+			-p s:2g \\
+			-p l:0:System \\
+			/dev/sdb
 
 "
 	if [ -n "$2" ]; then
@@ -102,6 +111,10 @@ getopts()
 		shift
 	done
 	let number_of_parts=$part-1
+	if [ -z ${ID[0]} ]; then
+		add_part "ESP:0:'EFI System Partition'"
+		number_of_parts=0
+	fi
 }
 
 get_dirs()
