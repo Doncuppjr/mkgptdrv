@@ -1,7 +1,7 @@
 mkgptdrv
 ========
 
-Script to wipe a block device and throw down a gpt with multiple partitions, plus add syslinux bios and efi files.
+Script to wipe a block device and install a gpt with multiple partitions, plus add syslinux bios and efi files.
 
 ###Usage:
 
