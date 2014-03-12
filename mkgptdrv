@@ -387,6 +387,7 @@ enough_room()
 		else
 			end[$part]=$last_psec
 			total=$last_psec
+			let size[$part]=$last_psec-${start[$part]}+1
 		fi
 	done
 	if [ "$total" -le "$last_psec" ]; then
@@ -512,10 +513,11 @@ partition()
 	blockdev --rereadpt $device
 	sgdisk -o $device
 	echo -e "\nCreating Partitions"
-	printf "%3s %4s %12s %-40s\n" ID Type Size Label
+	printf "%3s %4s %12s %-40s\n" ID Type MBytes Label
 	echo "==================================================="
 	for part in `seq 0 $number_of_parts`; do
-		printf "%3s %4s %12s %-40s\n" "${ID[$part]}" "${type[$part]}" "${size[$part]}" "${label[$part]}"
+		let msize=${size[$part]}/2048
+		printf "%3s %4s %12s %-40s\n" "${ID[$part]}" "${type[$part]}" "$msize" "${label[$part]}"
 		if [ -n "${label[$part]}" ]; then
 			sgdisk	-n ${ID[$part]}:${start[$part]}:${end[$part]} \
 					-t ${ID[$part]}:${type[$part]} \
