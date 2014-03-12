@@ -399,7 +399,7 @@ enough_room()
 
 install_mbr()
 {
-	echo -e "Installing Bootsector"
+	echo -e "\nInstalling Bootsector"
 	dd if=$biosdir/gptmbr.bin of=$device bs=440 count=1 conv=notrunc
 }
 
@@ -451,8 +451,9 @@ main()
 
 buffer_size()
 {
-	local dirty=`grep -e Dirty: /proc/meminfo |grep -oe "[0-9]*"`
-	local writeback=`grep -e Writeback: /proc/meminfo |grep -oe "[0-9]*"`
+	local dirty writeback buffer
+	dirty=`grep -e Dirty: /proc/meminfo |grep -oe "[0-9]*"`
+	writeback=`grep -e Writeback: /proc/meminfo |grep -oe "[0-9]*"`
 	let buffer=$dirty+$writeback
 	echo $buffer
 }
@@ -460,10 +461,11 @@ buffer_size()
 _sync()
 {
 	echo -e "\nSyncronizing the disk"
+	local max spid persec progress pct last now counter time freq
 	format='\rProgress %3s at %6s Per Second'
 	freq=2
 	counter=0
-	let max=`buffer_size`
+	max=`buffer_size`
 	last=$max
 	sync &
 	spid=$!
@@ -478,13 +480,16 @@ _sync()
 		sleep $freq
 		let counter+=1
 	done
-	let time=$counter*$freq
-	let persec=$max/$time
-	printf "$format\n" "100%" "${persec}K"
+	if [ $counter -gt 0 ]; then
+		let time=$counter*$freq
+		let persec=$max/$time
+		printf "$format\n" "100%" "${persec}K"
+	fi
 }
 
 check_needed()
 {
+	local command still_need
 	for command in $needed; do
 		if ! which $command >/dev/null 2>&1; then
 			still_need="$still_need $command"
@@ -603,7 +608,7 @@ copy_file()
 	local orig_size=`stat -c %s "$1"`
 	local dest_size=0
 	local timeout=0
-	local format='Copying %-15s to %-50s %-3s Complete\r'
+	local format='Copying %-15s to %-40s %4s Complete\r'
 	local freq show_progress pct 
 	if [ -n "$mount_opts" ]; then
 		freq='1'
