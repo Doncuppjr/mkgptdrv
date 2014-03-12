@@ -21,6 +21,12 @@
 
 test $(id -u) -ne 0 && echo "please run as root" && exit 1
 
+PID=$$
+COM32_LIST=`mktemp -t mkgptdrv.XXX`
+MNTDIR=`mktemp -t -d mkgptdrv.XXX`
+
+cpt=262144 #default Copy Progress Threshold
+
 needed="sgdisk mkswap mkfs.vfat mkfs.ext4 fuser"
  
 libutil="chain complex cptime display fancyhello hdt ifcpu \
@@ -39,7 +45,21 @@ libgpl="cpuidtest disk dmitest hdt ifcpu lua vpdtest zzjson"
 
 liblua="lua"
 
-cpt=262144 #Copy Progress Threshold
+clean_up()
+{
+	while pgrep -P $PID >/dev/null 2>&1; do
+		kill -KILL `pgrep -P $PID` >/dev/null 2>&1
+		sleep .1
+	done
+	sync
+	if mountpoint -q $MNTDIR; then
+		umount -f $MNTDIR
+	fi
+	rm -rf $COM32_LIST $MNTDIR
+	exit $1
+}
+
+trap "clean_up 21" SIGHUP SIGINT SIGTERM
 
 usage()
 {
@@ -64,14 +84,14 @@ is required.
 Sizes can be expressed as <size>B, K, M, G and S for sectors.
 
 Options:
-     --config,-c <dir>		   : Path to syslinux.cfg folder.
-        --min,-m <size>		   : Minimum disk size allowed.
+     --config,-c <dir>             : Path to syslinux.cfg folder.
+        --min,-m <size>            : Minimum disk size allowed.
   --partition,-p <type:size:label> : Partition shorthand.
       --title,-t <Project/Brand>   : Will be used to label the EFI Loader Directory.
-    --overlay,-o <dir>		   : Additional directory to merge in at the root level.
-       --sync,-s		   : Mount volumes with sync enabled.
-     --device,-d <block device>	   : The last argument is interpreted as the device anyways.
-       --help,-h		   : Show this usage.
+    --overlay,-o <dir>             : Additional directory to merge in at the root level.
+       --sync,-s                   : Mount volumes with sync enabled.
+     --device,-d <block device>    : The last argument is interpreted as the device anyways.
+       --help,-h                   : Show this usage.
 
 Partition Types:
          linux,l : Standard Ext4 Linux Volume
@@ -82,15 +102,15 @@ Partition Types:
              ESP : EFI System Partition
 
 Examples:
-	mkgptpart -c /sys-themes/default -t 'MyProject' -o /build  /dev/loop0
-	
-	mkgptpart	-c /sys-themes/menu \\
-			-t 'BobsDistro' \\
-			-o /build \\
-			-p ESP:1g:'EFI System Partition' \\
-			-p s:2g \\
-			-p l:0:System \\
-			/dev/sdb
+         mkgptdrv -c /sys-themes/default -t 'MyProject' -o /build  /dev/loop0
+
+         mkgptdrv -c /sys-themes/menu \\
+                  -t 'BobsDistro' \\
+                  -o /build \\
+                  -p ESP:1g:'EFI System Partition' \\
+                  -p s:2g \\
+                  -p l:0:System \\
+                  /dev/sdb
 
 "
 	if [ -n "$2" ]; then
@@ -179,7 +199,7 @@ scan_config()
 			kontron_wdt disk zzjson libgpl chain host rosh ifcpu \
 			ifcpu64 hdt menu lua mboot cmd; do
 
-			grep $1 -oe $com.c32 >> /tmp/syslinux-com32
+			grep $1 -oe $com.c32 >> $COM32_LIST
 		done
 	else
 		usage 13 "Could not find config $config."
@@ -189,26 +209,26 @@ scan_config()
 com_deps()
 {
 	for lib in libutil libcom32 liblua libgpl libmenu; do
-		if ! grep -qe $lib.c32 /tmp/syslinux-com32; then
+		if ! grep -qe $lib.c32 $COM32_LIST; then
 			for module in `eval echo "\$"$lib`; do
-				if grep -qe $module.c32 /tmp/syslinux-com32; then
-					echo "$lib.c32" >> /tmp/syslinux-com32
+				if grep -qe $module.c32 $COM32_LIST; then
+					echo "$lib.c32" >> $COM32_LIST
 					if [ "$lib" == "libmenu" ]; then
-						echo libutil.c32 >> /tmp/syslinux-com32
-						echo libcom32.c32 >> /tmp/syslinux-com32
+						echo libutil.c32 >> $COM32_LIST
+						echo libcom32.c32 >> $COM32_LIST
 					fi
 				fi
 			done
 		fi
 	done
-	cat /tmp/syslinux-com32 |sort -u > /tmp/sorted
-	rm /tmp/syslinux-com32
-	mv /tmp/sorted /tmp/syslinux-com32
+	cat $COM32_LIST |sort -u > /tmp/sorted
+	rm $COM32_LIST
+	mv /tmp/sorted $COM32_LIST
 }
 
 copy_files()
 {
-	ESP=/tmp/syslinux-mount
+	ESP=$MNTDIR
 	BIOSDIR=$ESP/boot/syslinux
 	EFI32=$ESP/EFI/"$EFIname"/efi32
 	EFI64=$ESP/EFI/"$EFIname"/efi64
@@ -227,7 +247,7 @@ copy_files()
 	if is_enabled $msoft; then
 		copy_dir "$configdir" 	"$MSDIR"
 	fi
-	for com in `cat /tmp/syslinux-com32`; do
+	for com in `cat $COM32_LIST`; do
 		echo -e "\nCopying com32 files"
 		copy_file "$biosdir/$com"	"$BIOSDIR/$com"
 		copy_file "$efi32dir/$com"	"$EFI32/$com"
@@ -402,7 +422,7 @@ enough_room()
 
 install_mbr()
 {
-	echo -e "\nInstalling Bootsector"
+	echo -e "\nInstalling Master Boot Record"
 	dd if=$biosdir/gptmbr.bin of=$device bs=440 count=1 conv=notrunc
 }
 
@@ -416,7 +436,7 @@ part_id()
 
 mount_dev()
 {
-	mount ${mount_opts} ${device}${p}${ESPpart} /tmp/syslinux-mount
+	mount ${mount_opts} ${device}${p}${ESPpart} $MNTDIR
 }
 
 main()
@@ -438,7 +458,6 @@ main()
 		partition
 		format
 		install_mbr
-		mkdir -p /tmp/syslinux-mount
 		mount_dev
 		sync
 		copy_files
@@ -446,9 +465,7 @@ main()
 		echo -e "\nInstalling Bios Bootloader"
 		extlinux -i $BIOSDIR
 		sync
-		umount /tmp/syslinux-mount
-		rmdir /tmp/syslinux-mount
-		rm  /tmp/syslinux-com32
+		clean_up 0
 	fi
 }
 
