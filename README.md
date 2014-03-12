@@ -22,14 +22,14 @@ is required.
 Sizes can be expressed as <size>B, K, M, G and S for sectors.
 
 Options:
-     --config,-c <dir>		   : Path to syslinux.cfg folder.
-        --min,-m <size>		   : Minimum disk size allowed.
-  --partition,-p <type:size:label> : Partition shorthand.
-      --title,-t <Project/Brand>   : Will be used to label the EFI Loader Directory.
-    --overlay,-o <dir>		   : Additional directory to merge in at the root level.
-       --sync,-s		   : Mount volumes with sync enabled.
-     --device,-d <block device>	   : The last argument is interpreted as the device anyways.
-       --help,-h		   : Show this usage.
+    --config,-c <dir>		           : Path to syslinux.cfg folder.
+       --min,-m <size>		   : Minimum disk size allowed.
+--partition,-p <type:size:label>   : Partition shorthand.
+       --title,-t <Project/Brand>     : Will be used to label the EFI Loader Directory.
+ --overlay,-o <dir>		          : Additional directory to merge in at the root level.
+     --sync,-s		                  : Mount volumes with sync enabled.
+  --device,-d <block device>	  : The last argument is interpreted as the device anyways.
+       --help,-h		                  : Show this usage.
 
 Partition Types:
          linux,l : Standard Ext4 Linux Volume
@@ -42,11 +42,11 @@ Partition Types:
 Examples:
 	mkgptpart -c /sys-themes/default -t 'MyProject' -o /build  /dev/loop0
 	
-	mkgptpart	-c /sys-themes/menu \\
-			-t 'BobsDistro' \\
-			-o /build \\
-			-p ESP:1g:'EFI System Partition' \\
-			-p s:2g \\
-			-p l:0:System \\
+	mkgptpart	-c /sys-themes/menu \
+			-t 'BobsDistro' \
+			-o /build \
+			-p ESP:1g:'EFI System Partition' \
+			-p s:2g \
+			-p l:0:System \
 			/dev/sdb
 
