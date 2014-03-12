@@ -21,16 +21,22 @@
 
 test $(id -u) -ne 0 && echo "please run as root" && exit 1
 
+needed="sgdisk mkswap mkfs.vfat mkfs.ext4 fuser"
+ 
 libutil="chain complex cptime display fancyhello hdt ifcpu \
 	 keytest libmenu menu prdhcp pxechn rosh simple test \
 	 test2 vesamenu"
+	 
 libcom32="chain cmd complex config display elf ethersel gfxboot \
 	  gpxecmd hdt hexdump host ifcpu ifcpu64 ifmemdsk ifplop \
 	  kbdmap kontron_wdt libmenu linux localboot lua mboot \
 	  pcitest pmload prdhcp pxechn reboot rosh sanboot sdi \
 	  simple sysdump test test2 vesamenu whichsys"
+	  
 libmenu="complex display hdt simple test test2"
+
 libgpl="cpuidtest disk dmitest hdt ifcpu lua vpdtest zzjson"
+
 liblua="lua"
 
 usage()
@@ -476,6 +482,20 @@ _sync()
 	printf "$format\n" "100%" "${persec}K"
 }
 
+check_needed()
+{
+	for command in $needed; do
+		if ! which $command > /dev/null 2>&1; then
+			still_need="$still_need $command"
+		fi
+	done
+	if [ -n "$still_need" ]; then
+		echo "We needed the following commands but were unable to locate them."
+		echo "$still_need"
+		exit 20
+	fi
+}
+
 list_mounts()
 {
 	grep -oe "$1[0-9]*" /proc/mounts
@@ -537,7 +557,8 @@ format()
 					mkswap ${device}${p}${ID[$part]}
 				fi
 			;;
-			8e00) pvcreate ${device}${p}${ID[$part]}
+			8e00) #pvcreate ${device}${p}${ID[$part]}
+				echo "LVM Partitioned, the rest is up to you"
 			;;
 		esac
 	done
@@ -590,6 +611,7 @@ copy_file()
 	echo ""
 }
 
+check_needed
 getopts "$@"
 main
 
