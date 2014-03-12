@@ -582,6 +582,7 @@ format()
 
 copy_dir()
 {
+	local dir adir file
 	dir=$1
 	if [ "`echo $dir | rev | cut -c1`" == "/" ]; then
 		dir="`echo $dir| rev | cut -c2- | rev`"
@@ -599,32 +600,44 @@ copy_file()
 	cp -f "$1" "$2" &
 	cppid=$!
 
-	orig_size=`stat -c %s "$1"`
-	dest_size=0
-	timeout=0
-	format='Copying %-15s to %-50s %-3s Complete\r'
+	local orig_size=`stat -c %s "$1"`
+	local dest_size=0
+	local timeout=0
+	local format='Copying %-15s to %-50s %-3s Complete\r'
+	local freq show_progress pct 
 	if [ -n "$mount_opts" ]; then
 		freq='1'
 	else
 		freq='.1'
 	fi
-	while ps -p $cppid >/dev/null 2>&1 && [ $timeout -lt 30 ]; do
-		if [ -e "$2" ]; then
-			dest_size=`stat -c %s "$2"`
+	if [ $orig_size -gt 1048576 ]; then
+		local show_progress=true
+	fi
+	while ps -p $cppid >/dev/null 2>&1 && [ $timeout -lt 60 ]; do
+		if is_enabled $show_progress; then
+			if [ -e "$2" ]; then
+				dest_size=`stat -c %s "$2"`
+			else
+				let timeout+=1
+			fi
+			let pct=100*$dest_size/$orig_size
+			printf "$format" "`basename $1`" "`dirname $2`" "${pct}%"
+			sleep $freq
 		else
+			#We are not gonna stat the file, so it's ok to have a fast timer when sync is on.
+			sleep .1
 			let timeout+=1
 		fi
-		let pct=100*$dest_size/$orig_size
-		printf "$format" "`basename $1`" "`dirname $2`" "${pct}%"
-		sleep $freq
 	done
 	if [ `stat -c %s "$2"` -eq $orig_size ]; then
-		printf "$format" "`basename $1`" "`dirname $2`" "100%"
+		if is_enabled $show_progress; then
+			printf "$format" "`basename $1`" "`dirname $2`" "100%"
+			echo ""
+		fi
 	else
 		echo "Something went wrong with the copy!"
 		kill -KILL $cppid
 	fi
-	echo ""
 }
 
 check_needed
