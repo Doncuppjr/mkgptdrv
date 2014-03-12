@@ -82,9 +82,9 @@ Partition Types:
              ESP : EFI System Partition
 
 Examples:
-	mkgptpart -c /sys-themes/default -t 'MyProject' -o /build  /dev/loop0
+	mkgptdrv -c /sys-themes/default -t 'MyProject' -o /build  /dev/loop0
 	
-	mkgptpart	-c /sys-themes/menu \\
+	mkgptdrv	-c /sys-themes/menu \\
 			-t 'BobsDistro' \\
 			-o /build \\
 			-p ESP:1g:'EFI System Partition' \\
