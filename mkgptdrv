@@ -39,6 +39,8 @@ libgpl="cpuidtest disk dmitest hdt ifcpu lua vpdtest zzjson"
 
 liblua="lua"
 
+cpt=262144 #Copy Progress Threshold
+
 usage()
 {
 	echo "
@@ -109,6 +111,7 @@ getopts()
 			-o|--overlay)	overlay="$2";	shift;;
 			-d|--device)	device="$2";	shift;;
 			-s|--sync)	mount_opts="-o sync";;
+			--cpt)		let cpt=`convert_to_sectors $2`*512;shift;;
 			--nvdefault)	nvdefault=true;;
 			--msoft)	msoft=true;;
 			-h|--help)	usage 255;;
@@ -462,7 +465,7 @@ _sync()
 {
 	echo -e "\nSyncronizing the disk"
 	local max spid persec progress pct last now counter time freq
-	format='\rProgress %3s at %6s Per Second'
+	format='\rProgress %4s at %6s Per Second'
 	freq=2
 	counter=0
 	max=`buffer_size`
@@ -527,9 +530,11 @@ partition()
 	for mount in `list_mounts ${device}${p}`; do
 		umount -f $mount; orbail 29
 	done
+	echo -e "\nClearing Head and Tail of Drive"
 	dd if=/dev/zero of=$device bs=1M count=2; orbail 16
 	dd if=/dev/zero of=$device bs=512 count=32 seek=$(($disk_size - 32)); orbail 17
 	blockdev --rereadpt $device; orbail 18
+	echo ""
 	sgdisk -o $device; orbail 19
 	echo -e "\nCreating Partitions"
 	printf "%3s %4s %12s %-40s\n" ID Type MBytes Label
@@ -608,14 +613,14 @@ copy_file()
 	local orig_size=`stat -c %s "$1"`
 	local dest_size=0
 	local timeout=0
-	local format='Copying %-15s to %-40s %4s Complete\r'
+	local format='Copying %-15s to %-42s %4s Complete\r'
 	local freq show_progress pct 
 	if [ -n "$mount_opts" ]; then
 		freq='1'
 	else
 		freq='.1'
 	fi
-	if [ $orig_size -gt 1048576 ]; then
+	if [ $orig_size -gt $cpt ]; then
 		local show_progress=true
 	fi
 	while ps -p $cppid >/dev/null 2>&1 && [ $timeout -lt 60 ]; do
