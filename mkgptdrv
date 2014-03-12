@@ -466,7 +466,7 @@ _sync()
 	last=$max
 	sync &
 	spid=$!
-	while ps -p $spid 2>&1>/dev/null; do
+	while ps -p $spid >/dev/null 2>&1; do
 		now=`buffer_size`
 		let persec=$last-$now
 		let persec=$persec/$freq
@@ -485,7 +485,7 @@ _sync()
 check_needed()
 {
 	for command in $needed; do
-		if ! which $command > /dev/null 2>&1; then
+		if ! which $command >/dev/null 2>&1; then
 			still_need="$still_need $command"
 		fi
 	done
@@ -520,14 +520,14 @@ partition()
 			sgdisk	-n ${ID[$part]}:${start[$part]}:${end[$part]} \
 					-t ${ID[$part]}:${type[$part]} \
 					-c ${ID[$part]}:"${label[$part]}" \
-					$device 1> /dev/null
+					$device 1>/dev/null
 		else
 			sgdisk	-n ${ID[$part]}:${start[$part]}:${end[$part]} \
 					-t ${ID[$part]}:${type[$part]} \
-					$device 1> /dev/null
+					$device 1>/dev/null
 		fi
 	done
-	sgdisk $device --attributes=1:set:2 1> /dev/null
+	sgdisk $device --attributes=1:set:2 1>/dev/null
 }
 
 format()
@@ -592,7 +592,7 @@ copy_file()
 	else
 		freq='.1'
 	fi
-	while ps -p $cppid 2>&1>/dev/null && [ $timeout -lt 30 ]; do
+	while ps -p $cppid >/dev/null 2>&1 && [ $timeout -lt 30 ]; do
 		if [ -e "$2" ]; then
 			dest_size=`stat -c %s "$2"`
 		else
