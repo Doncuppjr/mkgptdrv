@@ -28,17 +28,17 @@ MNTDIR=`mktemp -t -d mkmbrdrv.XXX`
 cpt=262144 #default Copy Progress Threshold
 
 needed="parted mkswap mkfs.vfat mkfs.ext4 fuser"
- 
+
 libutil="chain complex cptime display fancyhello hdt ifcpu \
 	 keytest libmenu menu prdhcp pxechn rosh simple test \
 	 test2 vesamenu"
-	 
+
 libcom32="chain cmd complex config display elf ethersel gfxboot \
 	  gpxecmd hdt hexdump host ifcpu ifcpu64 ifmemdsk ifplop \
 	  kbdmap kontron_wdt libmenu linux localboot lua mboot \
 	  pcitest pmload prdhcp pxechn reboot rosh sanboot sdi \
 	  simple sysdump test test2 vesamenu whichsys"
-	  
+
 libmenu="complex display hdt simple test test2"
 
 libgpl="cpuidtest disk dmitest hdt ifcpu lua vpdtest zzjson"
@@ -70,7 +70,7 @@ This is a simple script to turn a block device into a mbr formated disk.
 
 Additionally, you will need to tell it where it can find a syslinux theme.
 This is passed as -c <directory with syslinux.cfg>. This file will be scanned for
-the neceassary com32 files, and those files will be copied into the appropriate 
+the neceassary com32 files, and those files will be copied into the appropriate
 locations, along with the config folder.
 
 Multiple partitions are supported, and can be added with -p <type:size:label>
@@ -99,7 +99,7 @@ Examples:
 
          mkmbrdrv -c /sys-themes/menu \\
                   -o /build \\
-                  -p s:2g \\
+                  -p d:1g:boot \\
                   -p l:0:System \\
                   /dev/sdb
 
