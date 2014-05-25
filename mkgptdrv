@@ -17,7 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with mkgptdrv. If not, see http://www.gnu.org/licenses/.
 #####################################################################
-#set -x
 
 test $(id -u) -ne 0 && echo "please run as root" && exit 1
 
@@ -28,17 +27,17 @@ MNTDIR=`mktemp -t -d mkgptdrv.XXX`
 cpt=262144 #default Copy Progress Threshold
 
 needed="sgdisk mkswap mkfs.vfat mkfs.ext4 fuser"
- 
+
 libutil="chain complex cptime display fancyhello hdt ifcpu \
 	 keytest libmenu menu prdhcp pxechn rosh simple test \
 	 test2 vesamenu"
-	 
+
 libcom32="chain cmd complex config display elf ethersel gfxboot \
 	  gpxecmd hdt hexdump host ifcpu ifcpu64 ifmemdsk ifplop \
 	  kbdmap kontron_wdt libmenu linux localboot lua mboot \
 	  pcitest pmload prdhcp pxechn reboot rosh sanboot sdi \
 	  simple sysdump test test2 vesamenu whichsys"
-	  
+
 libmenu="complex display hdt simple test test2"
 
 libgpl="cpuidtest disk dmitest hdt ifcpu lua vpdtest zzjson"
@@ -102,7 +101,7 @@ Partition Types:
              ESP : EFI System Partition
 
 Examples:
-         mkgptdrv -c /sys-themes/default -t 'MyProject' -o /build  /dev/loop0
+         mkgptdrv -c /sys-themes/default -t 'MyProject' -o /build /dev/loop0
 
          mkgptdrv -c /sys-themes/menu \\
                   -t 'BobsDistro' \\
@@ -162,7 +161,7 @@ get_dirs()
 		fi
 	done
 	if [ -z "$configdir" ] || [ ! -e $configdir/syslinux.cfg ]; then
-		usage 14 "You must specify and syslinux theme dir with a syslinux.cfg inside."
+		usage 14 "You must specify a syslinux theme dir with a syslinux.cfg inside."
 	fi
 	if [ -z "$biosdir" ] || [ -z "$efi64dir" ] || [ -z "$efi32dir" ]; then
 		usage 11 "We could not get a good read on your syslinux install."
@@ -173,18 +172,6 @@ get_dirs()
 	if [ ! -e `which extlinux` ]; then
 		usage 12 "Could not find extlinux executable."
 	fi
-}
-
-is_enabled()
-{
-	if [ -n "$1" ]; then
-		for value in true on yes y 0; do
-			if [ "$value" == "$1" ]; then
-				return 0
-			fi
-		done
-	fi
-	return 1
 }
 
 scan_config()
@@ -272,8 +259,8 @@ copy_files()
 		copy_file "$efi64dir/syslinux.efi" "$MSDIR/bootmgfw.efi"
 		copy_file "$efi64dir/ldlinux.e64"  "$MSDIR/ldlinux.e64"
 	fi
-	echo -e "\nCopying in the Overlay Directory"
 	if [ -n "$overlay" ]; then
+		echo -e "\nCopying in the Overlay Directory"
 		copy_dir "$overlay"	"$ESP"
 	fi
 }
@@ -380,7 +367,7 @@ convert_to_sectors()
 		K)	let "size=${value}*2";;
 		M)	let "size=${value}*2*1024";;
 		G)	let "size=${value}*2*1024*1024";;
-		*)	echo "Invalid Unit $unit"; usage 5;;
+		*)	usage 5 "Invalid Unit $unit";;
 	esac
 	echo $size
 }
@@ -638,10 +625,12 @@ copy_file()
 		freq='.1'
 	fi
 	if [ $orig_size -gt $cpt ]; then
-		local show_progress=true
+		show_progress=true
+	else
+		show_progress=false
 	fi
 	while ps -p $cppid >/dev/null 2>&1 && [ $timeout -lt 60 ]; do
-		if is_enabled $show_progress; then
+		if $show_progress; then
 			if [ -e "$2" ]; then
 				dest_size=`stat -c %s "$2"`
 			else
@@ -657,7 +646,7 @@ copy_file()
 		fi
 	done
 	if [ `stat -c %s "$2"` -eq $orig_size ]; then
-		if is_enabled $show_progress; then
+		if $show_progress; then
 			printf "$format" "`basename $1`" "`dirname $2`" "100%"
 			echo ""
 		fi
