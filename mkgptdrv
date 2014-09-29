@@ -23,8 +23,7 @@ test $(id -u) -ne 0 && echo "please run as root" && exit 1
 PID=$$
 COM32_LIST=`mktemp -t mkgptdrv.XXX`
 MNTDIR=`mktemp -t -d mkgptdrv.XXX`
-
-cpt=262144 #default Copy Progress Threshold
+ESP=$MNTDIR
 
 needed="sgdisk mkswap mkfs.vfat mkfs.ext4 fuser"
 
@@ -43,6 +42,12 @@ libmenu="complex display hdt simple test test2"
 libgpl="cpuidtest disk dmitest hdt ifcpu lua vpdtest zzjson"
 
 liblua="lua"
+
+bios=true
+configure_efi=true
+cpt=262144 #default Copy Progress Threshold
+nvdefault=false
+msoft=false
 
 clean_up()
 {
@@ -133,6 +138,9 @@ getopts()
 			--cpt)		let cpt=`convert_to_sectors $2`*512;shift;;
 			--nvdefault)	nvdefault=true;;
 			--msoft)	msoft=true;;
+			--no-bios)	bios=false;;
+			--no-cfg)	configure_efi=false;;
+			--agree)	AGREE=true;;
 			-h|--help)	usage 255;;
 			*) device="$1";;
 		esac
@@ -160,8 +168,10 @@ get_dirs()
 			efi32dir=$knownloc/efi32
 		fi
 	done
-	if [ -z "$configdir" ] || [ ! -e $configdir/syslinux.cfg ]; then
-		usage 14 "You must specify a syslinux theme dir with a syslinux.cfg inside."
+	if $configure_efi; then
+		if [ -n "$configdir" ] && ! find $configdir -name syslinux.cfg; then
+			usage 14 "You must specify a syslinux theme dir with a syslinux.cfg inside."
+		fi
 	fi
 	if [ -z "$biosdir" ] || [ -z "$efi64dir" ] || [ -z "$efi32dir" ]; then
 		usage 11 "We could not get a good read on your syslinux install."
@@ -169,8 +179,10 @@ get_dirs()
 	if [ -n "$overlay" ] && [ ! -e "$overlay" ]; then
 		usage 15 "The requested root overlay directory $overlay, does not exist!"
 	fi
-	if [ ! -e `which extlinux` ]; then
-		usage 12 "Could not find extlinux executable."
+	if $bios; then
+		if [ ! -e `which extlinux` ]; then
+			usage 12 "Could not find extlinux executable."
+		fi
 	fi
 }
 
@@ -215,50 +227,67 @@ com_deps()
 
 copy_files()
 {
-	ESP=$MNTDIR
 	BIOSDIR=$ESP/boot/syslinux
 	EFI32=$ESP/EFI/"$EFIname"/efi32
 	EFI64=$ESP/EFI/"$EFIname"/efi64
 	MSDIR=$ESP/EFI/Microsoft/Boot
 	NVDIR=$ESP/EFI/BOOT
 	mkdir -p "$BIOSDIR"
-	mkdir -p "$EFI32"
-	mkdir -p "$EFI64"
-	echo -e "\nCopying Syslinux Theme"
-	copy_dir "$configdir"		"$BIOSDIR"
-	copy_dir "$configdir"		"$EFI32"
-	copy_dir "$configdir"		"$EFI64"
-	if is_enabled $nvdefault; then
-		copy_dir "$configdir"	"$NVDIR"
+	if [ -n "$configdir" ]; then
+		echo -e "\nCopying Syslinux Theme"
+		copy_dir "$configdir"		"$BIOSDIR"
+		if [ -n "$EFIname" ]; then
+			mkdir -p "$EFI32"
+			mkdir -p "$EFI64"
+			copy_dir "$configdir"		"$EFI32"
+			copy_dir "$configdir"		"$EFI64"
+		fi
 	fi
-	if is_enabled $msoft; then
-		copy_dir "$configdir" 	"$MSDIR"
+	if $nvdefault; then
+		mkdir -p "$NVDIR"
+		if [ -n "$configdir" ]; then
+			copy_dir "$configdir"	"$NVDIR"
+		fi
+	fi
+	if $msoft; then
+		mkdir -p "$MSDIR"
+		if [ -n "$configdir" ]; then
+			copy_dir "$configdir" 	"$MSDIR"
+		fi
 	fi
 	for com in `cat $COM32_LIST`; do
 		echo -e "\nCopying com32 files"
 		copy_file "$biosdir/$com"	"$BIOSDIR/$com"
-		copy_file "$efi32dir/$com"	"$EFI32/$com"
-		copy_file "$efi64dir/$com"	"$EFI64/$com"
-		if is_enabled $nvdefault; then
+		if [ -n "$EFIname" ]; then
+			copy_file "$efi32dir/$com"	"$EFI32/$com"
+			copy_file "$efi64dir/$com"	"$EFI64/$com"
+		fi
+		if $nvdefault; then
 			copy_file "$efi64dir/$com" "$NVDIR/$com"
 		fi
-		if is_enabled $msoft; then
+		if $msoft; then
 			copy_file "$efi64dir/$com" "$MSDIR/$com"
 		fi
 	done
-	echo -e "\nCopying EFI loaders"
-	copy_file "$efi32dir/syslinux.efi"	"$EFI32/syslinux.efi"
-	copy_file "$efi32dir/ldlinux.e32" 	"$EFI32/ldlinux.e32"
-	copy_file "$efi64dir/syslinux.efi"	"$EFI64/syslinux.efi"
-	copy_file "$efi64dir/ldlinux.e64"	"$EFI64/ldlinux.e64"
-	if is_enabled $nvdefault; then
+	if [ -n "$EFIname" ]; then
+		echo -e "\nCopying EFI loaders"
+		copy_file "$efi32dir/syslinux.efi"	"$EFI32/syslinux.efi"
+		copy_file "$efi32dir/ldlinux.e32" 	"$EFI32/ldlinux.e32"
+		copy_file "$efi64dir/syslinux.efi"	"$EFI64/syslinux.efi"
+		copy_file "$efi64dir/ldlinux.e64"	"$EFI64/ldlinux.e64"
+	fi
+	if $nvdefault; then
 		copy_file "$efi64dir/syslinux.efi" "$NVDIR/bootx64.efi"
 		copy_file "$efi64dir/ldlinux.e64"  "$NVDIR/ldlinux.e64"
 	fi
-	if is_enabled $msoft; then
+	if $msoft; then
 		copy_file "$efi64dir/syslinux.efi" "$MSDIR/bootmgfw.efi"
 		copy_file "$efi64dir/ldlinux.e64"  "$MSDIR/ldlinux.e64"
 	fi
+}
+
+copy_overlay()
+{
 	if [ -n "$overlay" ]; then
 		echo -e "\nCopying in the Overlay Directory"
 		copy_dir "$overlay"	"$ESP"
@@ -298,20 +327,24 @@ not_being_used()
 
 user_agrees()
 {
-	while [ -z "$REPLY" ]; do
-		echo "All data on the selected device is about to be overwritten!"
-		echo "Are you sure you want to do this?"
-		read -n 1 -r
-		if   [[ "$REPLY" =~ ^[Yy]$ ]]; then
-			echo ""
-			return 0
-		elif [[ "$REPLY" =~ ^[Nn]$ ]]; then
-			exit 3
-		else
-			echo -e "\nInvalid response. $REPLY\n"
-			unset REPLY
-		fi
-	done
+	if [ -z "$AGREE" ]; then
+		while [ -z "$REPLY" ]; do
+			echo "All data on the selected device is about to be overwritten!"
+			echo "Are you sure you want to do this?"
+			read -n 1 -r
+			if   [[ "$REPLY" =~ ^[Yy]$ ]]; then
+				echo ""
+				return 0
+			elif [[ "$REPLY" =~ ^[Nn]$ ]]; then
+				exit 3
+			else
+				echo -e "\nInvalid response. $REPLY\n"
+				unset REPLY
+			fi
+		done
+	else
+		return 0
+	fi
 }
 
 add_part()
@@ -428,29 +461,38 @@ mount_dev()
 
 main()
 {
-	efi_ready
 	get_dirs
-	# Any text file is a potential config, and there are plenty of ways to get one in there,
-	# so lets look at all of them in the config folder.
-	for file in `find $configdir -type f`;do 
-		if file $file |grep -qe 'ASCII text'; then
-			scan_config $file
-		fi
-	done
-	com_deps
+	if $configure_efi && [ -n "$configdir" ]; then
+		efi_ready
+		# Any text file is a potential config, and there are plenty of ways to get one in there,
+		# so lets look at all of them in the config folder.
+		for file in `find $configdir -type f`;do
+			if file $file |grep -qe 'ASCII text'; then
+				scan_config $file
+			fi
+		done
+		com_deps
+	fi
 	if block_device $device && \
 	   not_being_used $device && \
 	   enough_room $device && \
 	   user_agrees; then
 		partition
 		format
-		install_mbr
+		if $bios; then
+			install_mbr
+		fi
 		mount_dev
 		sync
-		copy_files
+		if $configure_efi; then
+			copy_files
+		fi
+		copy_overlay
 		_sync
-		echo -e "\nInstalling Bios Bootloader"
-		extlinux -i $BIOSDIR
+		if $bios; then
+			echo -e "\nInstalling Bios Bootloader"
+			extlinux -i $BIOSDIR
+		fi
 		sync
 		clean_up 0
 	fi
@@ -537,7 +579,7 @@ partition()
 	echo -e "\nClearing Head and Tail of Drive"
 	dd if=/dev/zero of=$device bs=1M count=2; orbail 16
 	dd if=/dev/zero of=$device bs=512 count=32 seek=$(($disk_size - 32)); orbail 17
-	blockdev --rereadpt $device; orbail 18
+#	blockdev --rereadpt $device; orbail 18
 	echo ""
 	sgdisk -o $device; orbail 19
 	echo -e "\nCreating Partitions"
