@@ -140,7 +140,7 @@ getopts()
 			-d|--device)	device="$2";	shift;;
 			-s|--sync)	mount_opts="-o sync";;
 			-y|--hybrid) hybridmbr=true;;
-			-l|--loop) loopfile=$2;	shift; device=`losetup -f`;;
+			-l|--loop) loopfile=$2;	shift;;
 			--cpt)		let cpt=`convert_to_sectors $2`*512;shift;;
 			--nvdefault)	nvdefault=true;;
 			--msoft)	msoft=true;;
@@ -152,7 +152,11 @@ getopts()
 		esac
 		shift
 	done
-	if [ -z "$device" ]; then
+        if [ -n "$device" ] && [ -n "$loopfile" ]; then
+                usage 22 "Error: You can not have both a device and a loopfile."
+        elif [ -n "$loopfile" ]; then
+                device=`losetup -f`
+        elif [ -z "$device" ]; then
 		usage 1 "Error: No block device specified."
 	fi
 	let number_of_parts=$part-1

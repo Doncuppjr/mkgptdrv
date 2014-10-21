@@ -129,7 +129,11 @@ getopts()
 		esac
 		shift
 	done
-	if [ -z "$device" ]; then
+        if [ -n "$device" ] && [ -n "$loopfile" ]; then
+                usage 22 "Error: You can not have both a device and a loopfile."
+        elif [ -n "$loopfile" ]; then
+                device=`losetup -f`
+        elif [ -z "$device" ]; then
 		usage 1 "Error: No block device specified."
 	fi
 	let number_of_parts=$part-1
