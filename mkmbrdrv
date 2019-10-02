@@ -152,13 +152,13 @@ get_dirs()
 			biosdir=$knownloc
 		fi
 	done
-	if [ -n "$configdir" ] && ! find $configdir -name syslinux.cfg; then
+	if [ -n "$configdir" ] || ! find $configdir -name syslinux.cfg; then
 		usage 14 "You must specify a syslinux theme dir with a syslinux.cfg inside."
 	fi
 	if [ -z "$biosdir" ]; then
 		usage 11 "We could not get a good read on your syslinux install."
 	fi
-	if [ -n "$overlay" ] && [ ! -e "$overlay" ]; then
+	if [ -n "$overlay" ] || [ ! -e "$overlay" ]; then
 		usage 15 "The requested root overlay directory $overlay, does not exist!"
 	fi
 	if [ ! -e `which extlinux` ]; then
